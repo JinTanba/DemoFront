@@ -5,10 +5,11 @@ import { ArrowDownCircle, Loader2 } from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import Image from "next/image"
 import { Toaster } from "@/components/ui/toaster"
 import { useToast } from "@/hooks/use-toast"
+import { FundButton, getOnrampBuyUrl } from "@coinbase/onchainkit/fund"
+import { usePrivy } from "@privy-io/react-auth"
 
 const tokens = [
   { symbol: "ETH", name: "Ethereum", icon: "/base.webp" },
@@ -17,10 +18,50 @@ const tokens = [
 ]
 
 const chains = [
-  {name: "optimism", icon: "/op.png"},
+  {name: "optimismSepolia", icon: "/base.webp"},
   {name: "base", icon: "/base.webp"},
   {name: "mainnet", icon: "/unichain.png"},
 ]
+
+const WalletConnectButton = () => {
+  const { login, logout, authenticated, user } = usePrivy();
+  
+  const connectedStyle = authenticated
+    ? "bg-green-600 hover:bg-green-700 hover:shadow-sm hover:shadow-green-600"
+    : "bg-gradient-to-r from-red-400 to-yellow-500 hover:from-yellow-500 hover:pink";
+
+  return (
+    <button
+      onClick={user ? logout : login}
+      className={`
+        px-2 py-1 rounded-full
+        ${connectedStyle}
+        text-white text-[7px] font-medium
+        transition-all duration-200
+        hover:shadow-lg
+        flex items-center gap-2
+      `}
+    >
+      <div className={`
+        w-[6px] h-[6px] rounded-full
+        ${authenticated ? 'bg-green-200' : 'bg-red-200'}
+        animate-pulse
+      `} />
+      {user?.wallet ? user.wallet.address.slice(0, 6) + '...' + user.wallet.address.slice(-4) : 'Connect Wallet'}
+    </button>
+  );
+};
+
+const FoxButton = () => {
+  return (
+    <button
+      onClick={() => console.log('Fox button clicked')}
+      className="text-[20px] p-1 rounded-full bg-orange-500 hover:bg-orange-600 transition-colors"
+      aria-label="Fox button"
+    >
+    </button>
+  );
+};
 
 export default function Component() {
   const { toast } = useToast()
@@ -32,7 +73,7 @@ export default function Component() {
   const [toToken, setToToken] = React.useState(tokens[2])
   const [isLoading, setIsLoading] = React.useState(false)
   const [showSuccessModal, setShowSuccessModal] = React.useState(false)
-  const [error, setError] = React.useState<string | null>(null)
+  const [url, setUrl] = React.useState("")
 
   React.useEffect(() => {
     // Simple calculation for demonstration purposes
@@ -40,26 +81,29 @@ export default function Component() {
     setToAmount(calculatedAmount.toFixed(2))
   }, [fromAmount])
 
-  const checkEthereumProvider = () => {
-    if (typeof window !== 'undefined' && typeof window.ethereum !== 'undefined') {
-      return window.ethereum
-    }
-    throw new Error("Ethereum provider not detected. Please install MetaMask or another web3 wallet.")
-  }
+  React.useEffect(() => {
+    const projectId = '7a5c4085-9ba6-487b-8db3-e495c6afc1f5';
+
+    const onrampBuyUrl = getOnrampBuyUrl({
+      projectId,
+      addresses: { ["0x1B9203Eeb68EF5fe62Ad38f0E4d22990687E6585"]: ['base'] },
+      assets: ['USDC'],
+      presetFiatAmount: 20,
+      fiatCurrency: 'USD'
+    });
+    setUrl(onrampBuyUrl)
+  },[])
 
   const handleSwap = async () => {
-    setError(null)
-    setIsLoading(true)
     try {
-      const provider = checkEthereumProvider()
+      setIsLoading(true)
       console.log('Sending', fromAmount)
-      await executeSwap(fromAmount, provider)
+      await executeSwap(fromAmount)
     } catch (error) {
       console.error('Swap failed:', error)
-      setError(error instanceof Error ? error.message : "An unknown error occurred")
       toast({
         title: "Swap Failed",
-        description: error instanceof Error ? error.message : "An unknown error occurred",
+        description: "An error occurred during the swap process.",
         variant: "destructive",
       })
     } finally {
@@ -67,11 +111,8 @@ export default function Component() {
     }
   }
 
-  async function executeSwap(fromAmount: string, provider: any) {
+  async function executeSwap(fromAmount: string) {
     console.log('Executing swap with amount:', fromAmount)
-    
-    // Request account access
-    await provider.request({ method: 'eth_requestAccounts' })
     
     // Simulate a delay for the swap process
     await new Promise(resolve => setTimeout(resolve, 5000))
@@ -79,18 +120,25 @@ export default function Component() {
     setShowSuccessModal(true)
   }
 
+  const Ramp = () => {
+    return (
+        <FundButton fundingUrl={url} />
+    )
+  }
+
   return (
-    <div className="min-h-screen bg-black flex items-center justify-center">
-      <div className="w-[477px] bg-[#222222] rounded-[36px] p-4 relative shadow-[0px_14px_22px_0px_rgba(255,0,200,0.03)]">
-        {error && (
-          <Alert variant="destructive" className="mb-4">
-            <AlertTitle>Error</AlertTitle>
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
+    <div className="min-h-screen bg-black flex items-center justify-center relative">
+      {/* Fixed Ramp component and WalletConnect button */}
+      <div className="fixed top-4 right-4 z-50 flex items-center gap-2">
+        {/* <FoxButton /> */}
+        <WalletConnectButton />
+        <Ramp />
+      </div>
+
+      <div className="w-[477px] h-[403px] bg-[#222222] rounded-[36px] p-4 relative shadow-[0px_14px_22px_0px_rgba(255,0,200,0.03)]">
         <div className="space-y-0 relative">
           {/* From Chain Box */}
-          <div className="w-full bg-[#323232] rounded-[36px] p-4 shadow-[0px_4px_22px_0px_rgba(0,0,0,0.07)] mb-2">
+          <div className="w-[445px] h-[139px] bg-[#323232] rounded-[36px] p-4 shadow-[0px_4px_22px_0px_rgba(0,0,0,0.07)] mb-2">
             <div className="flex items-center gap-2 mb-4">
               <span className="text-gray-400">from</span>
               <Select
@@ -151,7 +199,7 @@ export default function Component() {
           </div>
 
           {/* To Token Box */}
-          <div className="w-full bg-[#323232] rounded-[36px] p-4 shadow-[0px_4px_22px_0px_rgba(0,0,0,0.07)] mt-2">
+          <div className="w-[445px] h-[139px] bg-[#323232] rounded-[36px] p-4 shadow-[0px_4px_22px_0px_rgba(0,0,0,0.07)] mt-2">
             <div className="flex items-center gap-2 mb-4">
               <span className="text-gray-400">to</span>
               <Select
@@ -209,7 +257,7 @@ export default function Component() {
         <button 
           onClick={handleSwap}
           disabled={isLoading}
-          className="w-full h-[59px] bg-[#FF30B0] hover:bg-[#F615B9] transition-colors rounded-[32px] text-white font-['DotGothic16'] text-base mt-4 mx-auto block border border-[#F615B9] shadow-[0px_4px_22px_0px_rgba(0,0,0,0.07)] disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-[401px] h-[59px] bg-[#FF30B0] hover:bg-[#F615B9] transition-colors rounded-[32px] text-white font-['DotGothic16'] text-base mt-4 mx-auto block border border-[#F615B9] shadow-[0px_4px_22px_0px_rgba(0,0,0,0.07)] disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isLoading ? (
             <div className="flex items-center justify-center">
